@@ -14,7 +14,6 @@ const sum = values => (values || []).reduce((total, value) => total + number(val
 const add = (...arrays) => zeros().map((_, month) => arrays.reduce((total, array) => total + number(array?.[month]), 0));
 const subtract = (left, right) => zeros().map((_, month) => number(left?.[month]) - number(right?.[month]));
 const multiply = (values, factor) => (values || zeros()).map(value => number(value) * number(factor));
-const negate = values => multiply(values, -1);
 const shift = (values, months) => {
   const result = zeros();
   (values || []).forEach((value, index) => {
@@ -49,23 +48,26 @@ function actualLedger(state, year) {
   const cashMovement = zeros();
   const monthsWithData = new Set();
   let unmapped = 0;
+
   state.actuals.filter(row => Number(row.year) === Number(year)).forEach(row => {
     const month = Math.max(0, Math.min(11, Number(row.month || 1) - 1));
     const classification = row.classification || classifyAccount(row.accountCode);
     const signed = number(row.signedAmount ?? (number(row.debit) - number(row.credit)));
     monthsWithData.add(month);
+
     if (classification.statement === 'pnl') {
-      const managementAmount = signed * number(classification.normalSign || 1);
-      ensure(categories, classification.category)[month] += managementAmount;
-      ensure(categories, classification.subCategory)[month] += managementAmount;
+      const amount = signed * number(classification.normalSign || 1);
+      ensure(categories, classification.category)[month] += amount;
+      ensure(categories, classification.subCategory)[month] += amount;
     } else if (classification.statement === 'balance') {
-      const managementMovement = signed * number(classification.normalSign || 1);
-      ensure(balanceMovements, classification.category)[month] += managementMovement;
+      const movement = signed * number(classification.normalSign || 1);
+      ensure(balanceMovements, classification.category)[month] += movement;
       if (classification.category === 'cash') cashMovement[month] += signed;
     } else {
       unmapped += 1;
     }
   });
+
   return { categories, balanceMovements, cashMovement, monthsWithData, unmapped };
 }
 
@@ -90,12 +92,11 @@ function addSupplierCost(plan, values, vatRate, paymentDelay) {
   addInto(plan.supplierPayments, shift(add(values, vat), paymentDelay));
 }
 
-function addCustomerRevenue(plan, revenue, invoices, vatRate, collectionDelay) {
+function addCustomerInvoices(plan, invoices, vatRate, collectionDelay) {
   const vat = multiply(invoices, vatRate);
   addInto(plan.invoices, invoices);
   addInto(plan.outputVat, vat);
   addInto(plan.cashReceipts, shift(add(invoices, vat), collectionDelay));
-  addInto(ensure(plan.categories, 'revenue'), revenue);
 }
 
 function targetPlan(state, target, scenario) {
@@ -108,18 +109,20 @@ function targetPlan(state, target, scenario) {
   const depreciation = Array(12).fill(number(target.depreciationAnnual) / 12);
   const financialNet = Array(12).fill(number(target.financialNetAnnual) / 12);
 
-  plan.categories.revenue = [...revenue];
-  plan.categories.otherRevenue = [...revenue];
-  plan.categories.directCosts = [...directCosts];
-  plan.categories.otherDirect = [...directCosts];
-  plan.categories.opex = [...opex];
-  plan.categories.otherOpex = [...opex];
-  plan.categories.personnel = [...personnel];
-  plan.categories.salary = [...personnel];
-  plan.categories.depreciation = [...depreciation];
-  plan.categories.financialNet = [...financialNet];
+  Object.assign(plan.categories, {
+    revenue: [...revenue],
+    otherRevenue: [...revenue],
+    directCosts: [...directCosts],
+    otherDirect: [...directCosts],
+    opex: [...opex],
+    otherOpex: [...opex],
+    personnel: [...personnel],
+    salary: [...personnel],
+    depreciation: [...depreciation],
+    financialNet: [...financialNet]
+  });
 
-  addCustomerRevenue(plan, revenue, revenue, state.company.vatRate, scenario.collectionDelayMonths);
+  addCustomerInvoices(plan, revenue, state.company.vatRate, scenario.collectionDelayMonths);
   addSupplierCost(plan, directCosts, state.company.vatRate, scenario.paymentDelayMonths);
   addSupplierCost(plan, opex, state.company.vatRate, scenario.paymentDelayMonths);
   addInto(plan.payrollPayments, personnel);
@@ -127,52 +130,50 @@ function targetPlan(state, target, scenario) {
   return plan;
 }
 
-function projectMonthlyDriver(project, scenario) {
+function projectDriver(project, scenario) {
   const revenue = zeros();
   const directCosts = zeros();
   const invoices = zeros();
-  const volumeFactor = number(scenario.revenueMultiplier || 1);
-  const adjustedCount = number(project.count) * volumeFactor;
+  const adjustedCount = number(project.count) * number(scenario.revenueMultiplier || 1);
   const probability = number(project.probability ?? 1);
   const totalRevenue = adjustedCount * number(project.price) * probability;
   const totalDirectCost = adjustedCount * number(project.directCostPerUnit) * probability * number(scenario.directCostMultiplier || 1);
   const start = Math.max(0, Math.min(11, Number(project.startMonth || 1) - 1));
   const end = Math.max(start, Math.min(11, Number(project.endMonth || project.startMonth || 1) - 1));
   let weights = Array(end - start + 1).fill(1 / (end - start + 1));
+
   if (project.phasing === 'custom' && Array.isArray(project.monthlyWeights)) {
     const full = normalizedWeights(project.monthlyWeights);
     weights = full.slice(start, end + 1);
     const total = sum(weights);
     if (total) weights = weights.map(value => value / total);
   }
+
   weights.forEach((weight, offset) => {
     revenue[start + offset] += totalRevenue * weight;
     directCosts[start + offset] += totalDirectCost * weight;
   });
-  if (project.invoiceTiming === 'upfront') {
-    invoices[start] = totalRevenue;
-  } else if (project.invoiceTiming === 'thirtySeventy') {
+
+  if (project.invoiceTiming === 'upfront') invoices[start] = totalRevenue;
+  else if (project.invoiceTiming === 'thirtySeventy') {
     invoices[start] += totalRevenue * 0.3;
     invoices[end] += totalRevenue * 0.7;
-  } else {
-    addInto(invoices, revenue);
-  }
+  } else addInto(invoices, revenue);
+
   return { revenue, directCosts, invoices };
 }
 
 function driverPlan(state, year, scenario) {
   const plan = blankPlan();
+
   state.projects.filter(project => Number(project.year) === Number(year)).forEach(project => {
-    const driver = projectMonthlyDriver(project, scenario);
-    const revenueCategory = project.revenueSubCategory || 'otherRevenue';
-    const directCategory = project.directCostSubCategory || 'otherDirect';
+    const driver = projectDriver(project, scenario);
     addInto(ensure(plan.categories, 'revenue'), driver.revenue);
-    addInto(ensure(plan.categories, revenueCategory), driver.revenue);
+    addInto(ensure(plan.categories, project.revenueSubCategory || 'otherRevenue'), driver.revenue);
     addInto(ensure(plan.categories, 'directCosts'), driver.directCosts);
-    addInto(ensure(plan.categories, directCategory), driver.directCosts);
-    addCustomerRevenue(
+    addInto(ensure(plan.categories, project.directCostSubCategory || 'otherDirect'), driver.directCosts);
+    addCustomerInvoices(
       plan,
-      zeros(),
       driver.invoices,
       number(project.vatRate ?? state.company.vatRate),
       number(project.collectionDelayMonths) + number(scenario.collectionDelayMonths)
@@ -191,11 +192,10 @@ function driverPlan(state, year, scenario) {
     const subCategory = cost.subCategory || (category === 'personnel' ? 'salary' : 'otherOpex');
     addInto(ensure(plan.categories, category), values);
     addInto(ensure(plan.categories, subCategory), values);
-    if (category === 'personnel') {
-      addInto(plan.payrollPayments, values);
-    } else if (category === 'financialNet') {
-      addInto(plan.financialPayments, values);
-    } else if (category !== 'depreciation') {
+
+    if (category === 'personnel') addInto(plan.payrollPayments, values);
+    else if (category === 'financialNet') addInto(plan.financialPayments, values);
+    else if (category !== 'depreciation') {
       addSupplierCost(
         plan,
         values,
@@ -204,14 +204,15 @@ function driverPlan(state, year, scenario) {
       );
     }
   });
+
   return plan;
 }
 
 function plannedLedger(state, year, scenarioKey) {
   const scenario = state.scenarios[scenarioKey] || state.scenarios.mostLikely;
-  const mode = state.planModeByYear[year] || 'projects';
   const target = state.targets.find(item => Number(item.year) === Number(year));
-  const plan = mode === 'target' && target ? targetPlan(state, target, scenario) : driverPlan(state, year, scenario);
+  const useTarget = (state.planModeByYear[year] || 'projects') === 'target' && target;
+  const plan = useTarget ? targetPlan(state, target, scenario) : driverPlan(state, year, scenario);
   ['revenue','directCosts','opex','personnel','depreciation','financialNet'].forEach(key => ensure(plan.categories, key));
   return plan;
 }
@@ -222,9 +223,13 @@ function mergeActualAndPlan(state, year, scenarioKey) {
   const closed = Number(state.lastClosedMonthByYear[year] ?? -1);
   const categories = {};
   const keys = new Set([...Object.keys(actual.categories), ...Object.keys(plan.categories)]);
+
   keys.forEach(key => {
-    categories[key] = zeros().map((_, month) => month <= closed ? number(actual.categories[key]?.[month]) : number(plan.categories[key]?.[month]));
+    categories[key] = zeros().map((_, month) => month <= closed
+      ? number(actual.categories[key]?.[month])
+      : number(plan.categories[key]?.[month]));
   });
+
   const forecastOnly = values => (values || zeros()).map((value, month) => month <= closed ? 0 : number(value));
   return {
     actual,
@@ -245,19 +250,19 @@ function vatSchedule(outputVat, inputVat, openingVat, frequency) {
   const payments = zeros();
   let liability = number(openingVat);
   const periodLength = Math.max(1, Number(frequency || 3));
+
   for (let month = 0; month < 12; month += 1) {
     liability += number(outputVat[month]) - number(inputVat[month]);
-    const periodEnds = (month + 1) % periodLength === 0;
-    const payMonth = month + 1;
-    if (periodEnds && payMonth < 12 && liability > 0) {
-      payments[payMonth] += liability;
+    const nextMonth = month + 1;
+    if ((month + 1) % periodLength === 0 && nextMonth < 12 && liability > 0) {
+      payments[nextMonth] += liability;
       liability = 0;
     }
   }
   return payments;
 }
 
-function balanceOpening(opening) {
+function balancedOpening(opening) {
   const values = {
     cash: number(opening.cash),
     accountsReceivable: number(opening.accountsReceivable),
@@ -271,9 +276,9 @@ function balanceOpening(opening) {
     equity: number(opening.equity)
   };
   const assets = values.cash + values.accountsReceivable + values.fixedAssets + values.otherAssets + Math.max(-values.vatLiability, 0);
-  const equityLiabilities = values.accountsPayable + Math.max(values.vatLiability, 0) + values.taxLiability + values.loans + values.otherLiabilities + values.equity;
-  if (assets > equityLiabilities) values.otherLiabilities += assets - equityLiabilities;
-  if (equityLiabilities > assets) values.otherAssets += equityLiabilities - assets;
+  const equityAndLiabilities = values.accountsPayable + Math.max(values.vatLiability, 0) + values.taxLiability + values.loans + values.otherLiabilities + values.equity;
+  if (assets > equityAndLiabilities) values.otherLiabilities += assets - equityAndLiabilities;
+  if (equityAndLiabilities > assets) values.otherAssets += equityAndLiabilities - assets;
   return values;
 }
 
@@ -294,7 +299,7 @@ export function computeModel(state, year, scenarioKey = 'mostLikely') {
   const netIncome = subtract(preTax, tax);
   Object.assign(categories, { grossProfit, ebit, preTax, tax, netIncome });
 
-  const opening = balanceOpening(state.company.opening || {});
+  const opening = balancedOpening(state.company.opening || {});
   const actualCashMovement = merged.actual.cashMovement.map((value, month) => month <= merged.closed ? number(value) : 0);
   const vatPayments = vatSchedule(merged.outputVat, merged.inputVat, opening.vatLiability, state.company.vatFrequencyMonths);
   const taxPayments = shift(tax.map((value, month) => month <= merged.closed ? 0 : value), 1);
@@ -319,6 +324,7 @@ export function computeModel(state, year, scenarioKey = 'mostLikely') {
   let taxLiability = opening.taxLiability;
   let loans = opening.loans;
   let otherLiabilities = opening.otherLiabilities;
+  let equityMovements = 0;
 
   for (let month = 0; month < 12; month += 1) {
     if (month <= merged.closed) {
@@ -331,6 +337,7 @@ export function computeModel(state, year, scenarioKey = 'mostLikely') {
       taxLiability += number(movements.taxLiability?.[month]);
       loans += number(movements.loans?.[month]);
       otherLiabilities += number(movements.otherLiabilities?.[month]);
+      equityMovements += number(movements.equity?.[month]);
     } else {
       ar += number(merged.invoices[month]) + number(merged.outputVat[month]) - number(merged.cashReceipts[month]);
       contractPosition += number(revenue[month]) - number(merged.invoices[month]);
@@ -339,14 +346,15 @@ export function computeModel(state, year, scenarioKey = 'mostLikely') {
       taxLiability += number(tax[month]) - number(taxPayments[month]);
       fixedAssets -= number(depreciation[month]);
     }
-    const cumulativeProfit = sum(netIncome.slice(0, month + 1));
-    const equity = opening.equity + cumulativeProfit;
+
+    const equity = opening.equity + equityMovements + sum(netIncome.slice(0, month + 1));
     const contractAsset = Math.max(contractPosition, 0);
     const deferredRevenue = Math.max(-contractPosition, 0);
     const vatAsset = Math.max(-vatPosition, 0);
     const vatLiability = Math.max(vatPosition, 0);
     const totalAssets = number(closingCash[month]) + ar + contractAsset + fixedAssets + otherAssets + vatAsset;
     const totalEquityLiabilities = ap + deferredRevenue + vatLiability + taxLiability + loans + otherLiabilities + equity;
+
     balance.accountsReceivable[month] = ar;
     balance.contractAsset[month] = contractAsset;
     balance.fixedAssets[month] = fixedAssets;
@@ -369,8 +377,6 @@ export function computeModel(state, year, scenarioKey = 'mostLikely') {
   const fixedCosts = sum(opex) + sum(personnel) + sum(depreciation);
   const breakEvenRevenue = contributionMargin ? fixedCosts / contributionMargin : Infinity;
   const minCash = Math.min(...closingCash);
-  const minCashMonth = closingCash.indexOf(minCash);
-  const cashPositiveMonth = netCashFlow.findIndex((value, month) => month > merged.closed && value > 0);
 
   return {
     year: numericYear,
@@ -397,8 +403,8 @@ export function computeModel(state, year, scenarioKey = 'mostLikely') {
       breakEvenRevenue,
       revenueGapToBreakEven: Math.max(0, breakEvenRevenue - totalRevenue),
       minCash,
-      minCashMonth,
-      cashPositiveMonth,
+      minCashMonth: closingCash.indexOf(minCash),
+      cashPositiveMonth: netCashFlow.findIndex((value, month) => month > merged.closed && value > 0),
       yearEndCash: closingCash[11]
     },
     dataQuality: {
@@ -446,4 +452,4 @@ export function complianceReadiness(state, model, today = new Date()) {
   };
 }
 
-export const helpers = { zeros, sum, add, subtract, multiply, negate, shift, cumulative };
+export const helpers = { zeros, sum, add, subtract, multiply, shift, cumulative };
