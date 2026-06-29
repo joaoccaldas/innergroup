@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { createDefaultState, computeModel, classifyAccount, calculateFilingDeadline } from '../src/model.js';
+import { createDefaultState, computeModel, classifyAccount, calculateFilingDeadline } from '../src/financial-engine.js';
 
 function targetState() {
   const state = createDefaultState();
@@ -37,6 +37,7 @@ test('three scenarios change all linked outcomes', () => {
   assert.ok(downside.analytics.totalEBIT < likely.analytics.totalEBIT);
   assert.ok(likely.analytics.totalEBIT < upside.analytics.totalEBIT);
   assert.notEqual(downside.analytics.yearEndCash, upside.analytics.yearEndCash);
+  assert.notEqual(downside.balance.equity[11], upside.balance.equity[11]);
 });
 
 test('P&L rolls from revenue to net income', () => {
@@ -46,17 +47,21 @@ test('P&L rolls from revenue to net income', () => {
   assert.ok(model.analytics.totalNetIncome < model.analytics.totalEBIT);
 });
 
-test('balance sheet returns arrays and a control check', () => {
+test('operating costs affect cash and balance sheet remains linked', () => {
   const model = computeModel(targetState(), 2026, 'mostLikely');
+  const supplierPayments = model.cashFlow.supplierPayments.reduce((a, b) => a + b, 0);
+  assert.ok(supplierPayments > 270000);
   assert.equal(model.balance.cash.length, 12);
-  assert.equal(model.balance.totalAssets.length, 12);
-  assert.equal(model.balance.check.length, 12);
   assert.ok(model.balance.check.every(value => Number.isFinite(value)));
+  assert.ok(Math.max(...model.balance.check.map(Math.abs)) < 1);
 });
 
-test('annual report deadline is seven calendar months after fiscal year end', () => {
-  const deadline = calculateFilingDeadline('2026-12-31');
-  assert.equal(deadline.getFullYear(), 2027);
-  assert.equal(deadline.getMonth(), 6);
-  assert.equal(deadline.getDate(), 31);
+test('annual report deadline supports standard and continued-meeting cases', () => {
+  const standard = calculateFilingDeadline('2026-12-31');
+  assert.equal(standard.getFullYear(), 2027);
+  assert.equal(standard.getMonth(), 6);
+  assert.equal(standard.getDate(), 31);
+  const continued = calculateFilingDeadline('2026-12-31', true);
+  assert.equal(continued.getMonth(), 8);
+  assert.equal(continued.getDate(), 30);
 });
