@@ -121,7 +121,7 @@ export function renderActuals(context) {
           if (!validation.valid) throw new Error('Filen klarade inte grundvalideringen.');
           const years = [...new Set(rows.map(row => Number(row.year)))];
           const replace = document.getElementById('replace-year')?.checked;
-          context.mutate(draft => {
+          context.save(draft => {
             if (replace) draft.actuals = draft.actuals.filter(row => !years.includes(Number(row.year)));
             draft.actuals.push(...rows);
             years.forEach(importYear => {
@@ -151,7 +151,7 @@ export function renderActuals(context) {
         const credit = Number(data.get('credit') || 0);
         const accountCode = String(data.get('accountCode') || '');
         const module = await import('../model.js');
-        context.mutate(draft => {
+        context.save(draft => {
           draft.actuals.push({
             id: crypto.randomUUID(), recordType: 'transaction', date,
             period: `${dateObject.getFullYear()}-${String(dateObject.getMonth() + 1).padStart(2, '0')}`,

@@ -74,7 +74,7 @@ export function renderSettings(context) {
       document.getElementById('company-form')?.addEventListener('submit', event => {
         event.preventDefault();
         const data = new FormData(event.currentTarget);
-        context.mutate(draft => {
+        context.save(draft => {
           Object.assign(draft.company, {
             name: String(data.get('name') || ''), organisationNumber: String(data.get('organisationNumber') || ''),
             currency: String(data.get('currency') || 'SEK'), language: String(data.get('language') || 'sv'),
@@ -88,7 +88,7 @@ export function renderSettings(context) {
       document.getElementById('opening-form')?.addEventListener('submit', event => {
         event.preventDefault();
         const data = new FormData(event.currentTarget);
-        context.mutate(draft => {
+        context.save(draft => {
           Object.keys(draft.company.opening).forEach(key => { draft.company.opening[key] = Number(data.get(key) || 0); });
         }, 'Ingående balans sparad.');
       });

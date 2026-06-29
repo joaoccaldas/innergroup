@@ -183,7 +183,7 @@ export function renderPlan(context) {
         event.preventDefault();
         const data = new FormData(event.currentTarget);
         const weights = Array.from({ length: 12 }, (_, index) => Number(data.get(`weight-${index}`) || 0) / 100);
-        context.mutate(draft => {
+        context.save(draft => {
           const existing = draft.targets.find(item => Number(item.year) === year);
           const next = {
             year,
@@ -203,7 +203,7 @@ export function renderPlan(context) {
         const data = new FormData(event.currentTarget);
         const startMonth = Number(data.get('startMonth'));
         const endMonth = Math.max(startMonth, Number(data.get('endMonth')));
-        context.mutate(draft => {
+        context.save(draft => {
           draft.projects.push({
             id: crypto.randomUUID(), year, name: String(data.get('name') || ''), customer: String(data.get('customer') || ''),
             revenueSubCategory: String(data.get('revenueSubCategory') || 'otherRevenue'), status: String(data.get('status') || 'pipeline'),
@@ -219,7 +219,7 @@ export function renderPlan(context) {
         event.preventDefault();
         const data = new FormData(event.currentTarget);
         const annualAmount = Number(data.get('annualAmount') || 0);
-        context.mutate(draft => {
+        context.save(draft => {
           draft.fixedCosts.push({
             id: crypto.randomUUID(), year, name: String(data.get('name') || ''), category: String(data.get('category') || 'opex'),
             subCategory: String(data.get('subCategory') || 'otherOpex'), monthly: Array(12).fill(annualAmount / 12),

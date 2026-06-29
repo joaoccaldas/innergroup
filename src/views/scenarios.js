@@ -110,7 +110,7 @@ export function renderScenarios(context) {
         event.preventDefault();
         const key = form.dataset.scenarioForm;
         const data = new FormData(form);
-        context.mutate(draft => {
+        context.save(draft => {
           Object.assign(draft.scenarios[key], {
             revenueMultiplier: Number(data.get('revenueMultiplier') || 1),
             directCostMultiplier: Number(data.get('directCostMultiplier') || 1),

@@ -8,25 +8,16 @@ import { renderActuals } from './views/actuals.js';
 import { renderReports } from './views/reports.js';
 import { renderScenarios } from './views/scenarios.js';
 import { renderSettings } from './views/settings.js';
+import { renderWelcome } from './views/welcome.js';
+import { seed2026Baseline } from './seed-data.js';
+
+const WELCOME_KEY = 'innergroup-welcomed-v1';
 
 let state = loadState(createDefaultState);
 
-function seedPrototypePlan(draft) {
+function seedBaseline(draft) {
   const year = 2026;
-  if (!draft.targets.some(item => Number(item.year) === year)) {
-    draft.targets.push({
-      year,
-      annualRevenue: 850000,
-      directCostRatio: 69000 / 850000,
-      opexAnnual: 24199,
-      personnelAnnual: 172104,
-      depreciationAnnual: 0,
-      financialNetAnnual: 0,
-      monthlyWeights: [25000,25000,25000,25000,40000,25000,25000,25000,160000,290000,160000,25000].map(value => value / 850000)
-    });
-  }
-  draft.planModeByYear[year] = draft.planModeByYear[year] || 'target';
-  if (draft.lastClosedMonthByYear[year] === undefined) draft.lastClosedMonthByYear[year] = -1;
+  draft = seed2026Baseline(draft);
   if (!draft.targets.some(item => Number(item.year) === 2027)) {
     draft.targets.push({
       year: 2027,
@@ -36,19 +27,22 @@ function seedPrototypePlan(draft) {
       personnelAnnual: 900000,
       depreciationAnnual: 0,
       financialNetAnnual: 0,
-      monthlyWeights: [0.06,0.06,0.07,0.08,0.08,0.08,0.06,0.06,0.1,0.13,0.12,0.1]
+      monthlyWeights: [0.06, 0.06, 0.07, 0.08, 0.08, 0.08, 0.06, 0.06, 0.1, 0.13, 0.12, 0.1]
     });
   }
   draft.planModeByYear[2027] = draft.planModeByYear[2027] || 'target';
+  if (draft.lastClosedMonthByYear[2027] === undefined) draft.lastClosedMonthByYear[2027] = -1;
   return draft;
 }
 
-state = seedPrototypePlan(state);
+state = seedBaseline(state);
 saveState(state);
-let currentView = 'overview';
+
+let currentView = localStorage.getItem(WELCOME_KEY) ? 'overview' : 'welcome';
 let currentScenario = 'mostLikely';
 
 const views = {
+  welcome: { title: 'Välkommen', render: renderWelcome },
   overview: { title: 'Översikt', render: renderOverview },
   plan: { title: 'Planera', render: renderPlan },
   actuals: { title: 'Utfall', render: renderActuals },
@@ -101,26 +95,39 @@ function getScenarios(year = state.selectedYear) {
 }
 
 function replaceState(nextState) {
-  state = seedPrototypePlan(nextState);
+  state = seedBaseline(nextState);
   saveState(state);
   syncGlobalControls();
   render();
 }
 
-function mutate(mutator, message = '') {
+function mutate(mutator, message = '', options = {}) {
   mutator(state);
   saveState(state);
   syncGlobalControls();
-  render();
-  if (message) toast(message);
+  const targetView = options.view;
+  if (targetView && views[targetView]) {
+    setView(targetView, false);
+  } else {
+    render();
+  }
+  if (message) toast(`${message} Sparat och lagrat.`);
 }
 
-function setView(view) {
+function setView(view, track = true) {
   currentView = views[view] ? view : 'overview';
   document.querySelectorAll('.nav-item').forEach(button => {
     button.classList.toggle('active', button.dataset.view === currentView);
   });
   render();
+}
+
+function markWelcomed(language) {
+  if (language) {
+    state.company.language = language;
+    saveState(state);
+  }
+  localStorage.setItem(WELCOME_KEY, '1');
 }
 
 function availableYears() {
@@ -150,9 +157,11 @@ function context() {
     getModel,
     getScenarios,
     mutate,
+    save: (mutator, message) => mutate(mutator, message, { view: 'reports' }),
     replaceState,
     rerender: render,
     setView,
+    markWelcomed,
     months: MONTHS_SV,
     compliance: complianceReadiness(state, getModel(baseYear(), 'mostLikely'))
   };
