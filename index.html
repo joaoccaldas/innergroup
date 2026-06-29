@@ -1,0 +1,61 @@
+<!doctype html>
+<html lang="sv">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="theme-color" content="#26372f">
+  <meta name="description" content="Inner Group financial planning, forecasting and scenario modelling">
+  <title>Inner Group | Financial Studio</title>
+  <link rel="preconnect" href="https://cdn.jsdelivr.net">
+  <link rel="stylesheet" href="assets/styles.css">
+</head>
+<body>
+  <div class="app-shell">
+    <aside class="sidebar" aria-label="Huvudnavigation">
+      <div class="brand">
+        <span class="brand-mark" aria-hidden="true">IL</span>
+        <div><strong>Inner Group</strong><small>Financial Studio</small></div>
+      </div>
+      <nav id="main-nav">
+        <button class="nav-item active" data-view="overview"><span>01</span>Översikt</button>
+        <button class="nav-item" data-view="plan"><span>02</span>Planera</button>
+        <button class="nav-item" data-view="actuals"><span>03</span>Utfall</button>
+        <button class="nav-item" data-view="reports"><span>04</span>Rapporter</button>
+        <button class="nav-item" data-view="scenarios"><span>05</span>Scenarier</button>
+        <button class="nav-item" data-view="settings"><span>06</span>Inställningar</button>
+      </nav>
+      <div class="sidebar-note">
+        <strong>Modellen hänger ihop</strong>
+        <p>Projekt → resultat → fakturering → moms → kassaflöde → balansräkning.</p>
+      </div>
+    </aside>
+
+    <div class="workspace">
+      <header class="topbar">
+        <div>
+          <p class="eyebrow">EKONOMISTYRNING</p>
+          <h1 id="page-title">Översikt</h1>
+        </div>
+        <div class="topbar-actions">
+          <label class="compact-field">År
+            <select id="global-year"></select>
+          </label>
+          <label class="compact-field">Scenario
+            <select id="global-scenario">
+              <option value="downside">Worst case</option>
+              <option value="mostLikely" selected>Most likely</option>
+              <option value="upside">Best case</option>
+            </select>
+          </label>
+          <button class="button ghost" id="print-button">PDF-pack</button>
+        </div>
+      </header>
+      <main id="app" tabindex="-1"></main>
+    </div>
+  </div>
+
+  <div id="toast" role="status" aria-live="polite"></div>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
+  <script type="module" src="src/app.js"></script>
+</body>
+</html>
