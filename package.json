@@ -1,10 +1,10 @@
 {
   "name": "innergroup-financial-studio",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "private": true,
   "type": "module",
   "scripts": {
     "test": "node --test",
-    "check": "node --check src/model.js && node --check src/app.js && node --check src/actuals.js && node --check src/sie.js && node --check src/views/overview.js && node --check src/views/plan.js && node --check src/views/actuals.js && node --check src/views/reports.js && node --check src/views/scenarios.js && node --check src/views/settings.js"
+    "check": "node --check src/model.js && node --check src/financial-engine.js && node --check src/app-entry.js && node --check src/actuals.js && node --check src/sie.js && node --check src/charts.js && node --check src/ui.js && node --check src/views/overview.js && node --check src/views/plan.js && node --check src/views/actuals.js && node --check src/views/reports.js && node --check src/views/scenarios.js && node --check src/views/settings.js"
   }
 }
