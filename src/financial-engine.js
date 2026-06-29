@@ -73,15 +73,9 @@ function actualLedger(state, year) {
 
 function blankPlan() {
   return {
-    categories: {},
-    invoices: zeros(),
-    outputVat: zeros(),
-    cashReceipts: zeros(),
-    supplierBills: zeros(),
-    inputVat: zeros(),
-    supplierPayments: zeros(),
-    payrollPayments: zeros(),
-    financialPayments: zeros()
+    categories: {}, invoices: zeros(), outputVat: zeros(), cashReceipts: zeros(),
+    supplierBills: zeros(), inputVat: zeros(), supplierPayments: zeros(),
+    payrollPayments: zeros(), financialPayments: zeros()
   };
 }
 
@@ -110,16 +104,9 @@ function targetPlan(state, target, scenario) {
   const financialNet = Array(12).fill(number(target.financialNetAnnual) / 12);
 
   Object.assign(plan.categories, {
-    revenue: [...revenue],
-    otherRevenue: [...revenue],
-    directCosts: [...directCosts],
-    otherDirect: [...directCosts],
-    opex: [...opex],
-    otherOpex: [...opex],
-    personnel: [...personnel],
-    salary: [...personnel],
-    depreciation: [...depreciation],
-    financialNet: [...financialNet]
+    revenue: [...revenue], otherRevenue: [...revenue], directCosts: [...directCosts], otherDirect: [...directCosts],
+    opex: [...opex], otherOpex: [...opex], personnel: [...personnel], salary: [...personnel],
+    depreciation: [...depreciation], financialNet: [...financialNet]
   });
 
   addCustomerInvoices(plan, revenue, state.company.vatRate, scenario.collectionDelayMonths);
@@ -232,17 +219,10 @@ function mergeActualAndPlan(state, year, scenarioKey) {
 
   const forecastOnly = values => (values || zeros()).map((value, month) => month <= closed ? 0 : number(value));
   return {
-    actual,
-    closed,
-    categories,
-    invoices: forecastOnly(plan.invoices),
-    outputVat: forecastOnly(plan.outputVat),
-    cashReceipts: forecastOnly(plan.cashReceipts),
-    supplierBills: forecastOnly(plan.supplierBills),
-    inputVat: forecastOnly(plan.inputVat),
-    supplierPayments: forecastOnly(plan.supplierPayments),
-    payrollPayments: forecastOnly(plan.payrollPayments),
-    financialPayments: forecastOnly(plan.financialPayments)
+    actual, closed, categories,
+    invoices: forecastOnly(plan.invoices), outputVat: forecastOnly(plan.outputVat), cashReceipts: forecastOnly(plan.cashReceipts),
+    supplierBills: forecastOnly(plan.supplierBills), inputVat: forecastOnly(plan.inputVat), supplierPayments: forecastOnly(plan.supplierPayments),
+    payrollPayments: forecastOnly(plan.payrollPayments), financialPayments: forecastOnly(plan.financialPayments)
   };
 }
 
@@ -264,16 +244,9 @@ function vatSchedule(outputVat, inputVat, openingVat, frequency) {
 
 function balancedOpening(opening) {
   const values = {
-    cash: number(opening.cash),
-    accountsReceivable: number(opening.accountsReceivable),
-    fixedAssets: number(opening.fixedAssets),
-    otherAssets: number(opening.otherAssets),
-    accountsPayable: number(opening.accountsPayable),
-    vatLiability: number(opening.vatLiability),
-    taxLiability: number(opening.taxLiability),
-    loans: number(opening.loans),
-    otherLiabilities: number(opening.otherLiabilities),
-    equity: number(opening.equity)
+    cash: number(opening.cash), accountsReceivable: number(opening.accountsReceivable), fixedAssets: number(opening.fixedAssets),
+    otherAssets: number(opening.otherAssets), accountsPayable: number(opening.accountsPayable), vatLiability: number(opening.vatLiability),
+    taxLiability: number(opening.taxLiability), loans: number(opening.loans), otherLiabilities: number(opening.otherLiabilities), equity: number(opening.equity)
   };
   const assets = values.cash + values.accountsReceivable + values.fixedAssets + values.otherAssets + Math.max(-values.vatLiability, 0);
   const equityAndLiabilities = values.accountsPayable + Math.max(values.vatLiability, 0) + values.taxLiability + values.loans + values.otherLiabilities + values.equity;
@@ -295,14 +268,17 @@ export function computeModel(state, year, scenarioKey = 'mostLikely') {
   const grossProfit = subtract(revenue, directCosts);
   const ebit = subtract(subtract(subtract(grossProfit, opex), personnel), depreciation);
   const preTax = subtract(ebit, financialNet);
-  const tax = preTax.map(value => value > 0 ? value * number(state.company.taxRate) : 0);
+  const opening = balancedOpening(state.company.opening || {});
+
+  const tax = zeros();
+  tax[11] = Math.max(0, sum(preTax)) * number(state.company.taxRate);
   const netIncome = subtract(preTax, tax);
   Object.assign(categories, { grossProfit, ebit, preTax, tax, netIncome });
 
-  const opening = balancedOpening(state.company.opening || {});
   const actualCashMovement = merged.actual.cashMovement.map((value, month) => month <= merged.closed ? number(value) : 0);
   const vatPayments = vatSchedule(merged.outputVat, merged.inputVat, opening.vatLiability, state.company.vatFrequencyMonths);
-  const taxPayments = shift(tax.map((value, month) => month <= merged.closed ? 0 : value), 1);
+  const taxPayments = zeros();
+  if (merged.closed < 0 && opening.taxLiability > 0) taxPayments[0] = opening.taxLiability;
   const forecastCashMovement = subtract(
     merged.cashReceipts,
     add(merged.supplierPayments, merged.payrollPayments, merged.financialPayments, vatPayments, taxPayments)
@@ -321,7 +297,7 @@ export function computeModel(state, year, scenarioKey = 'mostLikely') {
   let otherAssets = opening.otherAssets;
   let ap = opening.accountsPayable;
   let vatPosition = opening.vatLiability;
-  let taxLiability = opening.taxLiability;
+  let taxPosition = opening.taxLiability;
   let loans = opening.loans;
   let otherLiabilities = opening.otherLiabilities;
   let equityMovements = 0;
@@ -334,7 +310,7 @@ export function computeModel(state, year, scenarioKey = 'mostLikely') {
       otherAssets += number(movements.otherAssets?.[month]);
       ap += number(movements.accountsPayable?.[month]);
       vatPosition += number(movements.vat?.[month]);
-      taxLiability += number(movements.taxLiability?.[month]);
+      taxPosition += number(movements.taxLiability?.[month]);
       loans += number(movements.loans?.[month]);
       otherLiabilities += number(movements.otherLiabilities?.[month]);
       equityMovements += number(movements.equity?.[month]);
@@ -343,7 +319,7 @@ export function computeModel(state, year, scenarioKey = 'mostLikely') {
       contractPosition += number(revenue[month]) - number(merged.invoices[month]);
       ap += number(merged.supplierBills[month]) + number(merged.inputVat[month]) - number(merged.supplierPayments[month]);
       vatPosition += number(merged.outputVat[month]) - number(merged.inputVat[month]) - number(vatPayments[month]);
-      taxLiability += number(tax[month]) - number(taxPayments[month]);
+      taxPosition += number(tax[month]) - number(taxPayments[month]);
       fixedAssets -= number(depreciation[month]);
     }
 
@@ -352,13 +328,15 @@ export function computeModel(state, year, scenarioKey = 'mostLikely') {
     const deferredRevenue = Math.max(-contractPosition, 0);
     const vatAsset = Math.max(-vatPosition, 0);
     const vatLiability = Math.max(vatPosition, 0);
-    const totalAssets = number(closingCash[month]) + ar + contractAsset + fixedAssets + otherAssets + vatAsset;
+    const taxAsset = Math.max(-taxPosition, 0);
+    const taxLiability = Math.max(taxPosition, 0);
+    const totalAssets = number(closingCash[month]) + ar + contractAsset + fixedAssets + otherAssets + vatAsset + taxAsset;
     const totalEquityLiabilities = ap + deferredRevenue + vatLiability + taxLiability + loans + otherLiabilities + equity;
 
     balance.accountsReceivable[month] = ar;
     balance.contractAsset[month] = contractAsset;
     balance.fixedAssets[month] = fixedAssets;
-    balance.otherAssets[month] = otherAssets + vatAsset;
+    balance.otherAssets[month] = otherAssets + vatAsset + taxAsset;
     balance.accountsPayable[month] = ap;
     balance.deferredRevenue[month] = deferredRevenue;
     balance.vatLiability[month] = vatLiability;
@@ -384,27 +362,14 @@ export function computeModel(state, year, scenarioKey = 'mostLikely') {
     categories,
     pnl: { revenue, directCosts, grossProfit, opex, personnel, depreciation, ebit, financialNet, preTax, tax, netIncome },
     cashFlow: {
-      receipts: merged.cashReceipts,
-      supplierPayments: merged.supplierPayments,
-      payrollPayments: merged.payrollPayments,
-      financialPayments: merged.financialPayments,
-      vatPayments,
-      taxPayments,
-      netCashFlow,
-      closingCash
+      receipts: merged.cashReceipts, supplierPayments: merged.supplierPayments, payrollPayments: merged.payrollPayments,
+      financialPayments: merged.financialPayments, vatPayments, taxPayments, netCashFlow, closingCash
     },
     balance,
     analytics: {
-      totalRevenue,
-      totalEBIT: sum(ebit),
-      totalNetIncome: sum(netIncome),
-      contributionMargin,
-      fixedCosts,
-      breakEvenRevenue,
-      revenueGapToBreakEven: Math.max(0, breakEvenRevenue - totalRevenue),
-      minCash,
-      minCashMonth: closingCash.indexOf(minCash),
-      cashPositiveMonth: netCashFlow.findIndex((value, month) => month > merged.closed && value > 0),
+      totalRevenue, totalEBIT: sum(ebit), totalNetIncome: sum(netIncome), contributionMargin, fixedCosts, breakEvenRevenue,
+      revenueGapToBreakEven: Math.max(0, breakEvenRevenue - totalRevenue), minCash,
+      minCashMonth: closingCash.indexOf(minCash), cashPositiveMonth: netCashFlow.findIndex((value, month) => month > merged.closed && value > 0),
       yearEndCash: closingCash[11]
     },
     dataQuality: {
@@ -443,12 +408,8 @@ export function complianceReadiness(state, model, today = new Date()) {
   ];
   const automatedScore = checks.filter(item => item.ok).length / checks.length;
   return {
-    deadline,
-    daysRemaining,
-    checklistProgress: completed / total,
-    automatedScore,
-    overallScore: (completed / total) * 0.55 + automatedScore * 0.45,
-    checks
+    deadline, daysRemaining, checklistProgress: completed / total, automatedScore,
+    overallScore: (completed / total) * 0.55 + automatedScore * 0.45, checks
   };
 }
 
