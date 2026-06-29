@@ -37,6 +37,7 @@ function pnlTable(model, months) {
     if (item.children) {
       item.children.forEach(child => {
         const childValues = model.categories[child.key] || Array(12).fill(0);
+        if (annual(childValues) === 0) return;
         rows.push(`<tr data-parent="${item.key}"><td style="padding-left:40px">${escapeHtml(child.label)}</td>${cells(childValues)}<td>${money(annual(childValues))}</td></tr>`);
       });
     }

@@ -5,7 +5,8 @@ export const ACCOUNT_HIERARCHY = [
   { key: 'revenue', label: 'Intäkter', children: [
     { key: 'programme', label: 'Program' }, { key: 'consulting', label: 'Konsultarvode' },
     { key: 'workshop', label: 'Workshops / keynotes' }, { key: 'events', label: 'Events' },
-    { key: 'coaching', label: 'Coaching' }, { key: 'otherRevenue', label: 'Övriga intäkter' }
+    { key: 'coaching', label: 'Coaching' }, { key: 'otherRevenue', label: 'Övriga intäkter' },
+    { key: 'egenInsats', label: 'Egen insats' }
   ]},
   { key: 'directCosts', label: 'Direkta kostnader', children: [
     { key: 'travel', label: 'Resor och logi' }, { key: 'materials', label: 'Material' },

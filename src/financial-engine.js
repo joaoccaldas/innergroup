@@ -195,13 +195,102 @@ function driverPlan(state, year, scenario) {
   return plan;
 }
 
+function lineItemPlan(state, year, scenario) {
+  const budget = (state.lineItemBudgets || []).find(item => Number(item.year) === Number(year));
+  if (!budget) return null;
+
+  const plan = blankPlan();
+  const revenueBySub = {};
+  let totalRevenue = zeros();
+
+  for (const [subCategory, monthly] of Object.entries(budget.revenue || {})) {
+    const adjusted = (monthly || zeros()).map(value => number(value) * number(scenario.revenueMultiplier || 1));
+    addInto(ensure(plan.categories, subCategory), adjusted);
+    revenueBySub[subCategory] = adjusted;
+    addInto(totalRevenue, adjusted);
+  }
+  ensure(plan.categories, 'revenue');
+  addInto(plan.categories.revenue, totalRevenue);
+
+  const directCostsBySub = {};
+  let totalDirect = zeros();
+  for (const [subCategory, monthly] of Object.entries(budget.directCosts || {})) {
+    const adjusted = (monthly || zeros()).map(value => number(value) * number(scenario.directCostMultiplier || 1));
+    addInto(ensure(plan.categories, subCategory), adjusted);
+    directCostsBySub[subCategory] = adjusted;
+    addInto(totalDirect, adjusted);
+  }
+  ensure(plan.categories, 'directCosts');
+  addInto(plan.categories.directCosts, totalDirect);
+
+  const opexBySub = {};
+  let totalOpex = zeros();
+  for (const [subCategory, monthly] of Object.entries(budget.opex || {})) {
+    const adjusted = (monthly || zeros()).map(value => number(value) * number(scenario.fixedCostMultiplier || 1));
+    addInto(ensure(plan.categories, subCategory), adjusted);
+    opexBySub[subCategory] = adjusted;
+    addInto(totalOpex, adjusted);
+  }
+  ensure(plan.categories, 'opex');
+  addInto(plan.categories.opex, totalOpex);
+
+  const personnelBySub = {};
+  let totalPersonnel = zeros();
+  for (const [subCategory, monthly] of Object.entries(budget.personnel || {})) {
+    const adjusted = (monthly || zeros()).map(value => number(value) * number(scenario.fixedCostMultiplier || 1));
+    addInto(ensure(plan.categories, subCategory), adjusted);
+    personnelBySub[subCategory] = adjusted;
+    addInto(totalPersonnel, adjusted);
+  }
+  ensure(plan.categories, 'personnel');
+  addInto(plan.categories.personnel, totalPersonnel);
+
+  const depreciation = (budget.depreciation || zeros()).map(value => number(value));
+  const financialNet = (budget.financialNet || zeros()).map(value => number(value));
+
+  addInto(ensure(plan.categories, 'depreciation'), depreciation);
+  addInto(ensure(plan.categories, 'financialNet'), financialNet);
+
+  addCustomerInvoices(plan, totalRevenue, state.company.vatRate, scenario.collectionDelayMonths);
+  addSupplierCost(plan, totalDirect, state.company.vatRate, scenario.paymentDelayMonths);
+  addSupplierCost(plan, totalOpex, state.company.vatRate, scenario.paymentDelayMonths);
+  addInto(plan.payrollPayments, totalPersonnel);
+  addInto(plan.financialPayments, financialNet);
+
+  return plan;
+}
+
 function plannedLedger(state, year, scenarioKey) {
   const scenario = state.scenarios[scenarioKey] || state.scenarios.mostLikely;
+  const budget = (state.lineItemBudgets || []).find(item => Number(item.year) === Number(year));
   const target = state.targets.find(item => Number(item.year) === Number(year));
-  const useTarget = (state.planModeByYear[year] || 'projects') === 'target' && target;
+  const mode = state.planModeByYear[year] || 'projects';
+
+  if (budget) {
+    return lineItemPlan(state, year, scenario);
+  }
+
+  const useTarget = mode === 'target' && target;
   const plan = useTarget ? targetPlan(state, target, scenario) : driverPlan(state, year, scenario);
   ['revenue','directCosts','opex','personnel','depreciation','financialNet'].forEach(key => ensure(plan.categories, key));
   return plan;
+}
+
+export function lineItemBudgetTotals(budget) {
+  const sum = values => (values || zeros()).reduce((total, value) => total + number(value), 0);
+  return {
+    revenue: Object.values(budget.revenue || {}).reduce((total, values) => total + sum(values), 0),
+    directCosts: Object.values(budget.directCosts || {}).reduce((total, values) => total + sum(values), 0),
+    opex: Object.values(budget.opex || {}).reduce((total, values) => total + sum(values), 0),
+    personnel: Object.values(budget.personnel || {}).reduce((total, values) => total + sum(values), 0),
+    depreciation: sum(budget.depreciation),
+    financialNet: sum(budget.financialNet)
+  };
+}
+
+export function buildLineItemPlanForYear(state, year, scenarioKey = 'mostLikely') {
+  const scenario = state.scenarios[scenarioKey] || state.scenarios.mostLikely;
+  return lineItemPlan(state, year, scenario);
 }
 
 function mergeActualAndPlan(state, year, scenarioKey) {

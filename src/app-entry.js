@@ -80,7 +80,8 @@ function getModel(year = state.selectedYear, scenario = currentScenario, cache =
   const key = `${numericYear}-${scenario}`;
   if (cache.has(key)) return cache.get(key);
   const modelState = clone(state);
-  if (numericYear > baseYear()) {
+  const base = baseYear();
+  if (numericYear > base) {
     const previous = getModel(numericYear - 1, scenario, cache);
     modelState.company.opening = closingToOpening(previous);
   }

@@ -27,7 +27,8 @@ export function renderOverview(context) {
     ['Workshop', annual(model.categories.workshop || [])],
     ['Events', annual(model.categories.events || [])],
     ['Coaching', annual(model.categories.coaching || [])],
-    ['Övrigt', annual(model.categories.otherRevenue || [])]
+    ['Övrigt', annual(model.categories.otherRevenue || [])],
+    ['Egen insats', annual(model.categories.egenInsats || [])]
   ].filter(item => item[1] !== 0);
   const closingCash = model.analytics.yearEndCash;
   const ebitMargin = model.analytics.totalRevenue ? model.analytics.totalEBIT / model.analytics.totalRevenue : 0;

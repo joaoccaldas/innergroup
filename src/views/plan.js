@@ -9,6 +9,77 @@ const revenueTypes = [
   { value: 'otherRevenue', label: 'Övrig intäkt' }
 ];
 
+const lineItemSubCategoryLabels = {
+  programme: 'Program',
+  consulting: 'Konsultarvode',
+  workshop: 'Workshops / keynotes',
+  events: 'Events',
+  coaching: 'Coaching',
+  otherRevenue: 'Övriga intäkter',
+  egenInsats: 'Egen insats',
+  accommodation: 'Logi',
+  travel: 'Resor och logi',
+  materials: 'Material',
+  platform: 'Plattform och projektlicenser',
+  educationMaterial: 'Utbildningsmaterial',
+  valueTreeLicense: 'Value Tree-licens',
+  otherDirect: 'Övriga direkta kostnader',
+  webDomainHost: 'Webbdomän / hosting',
+  software: 'Programvaror',
+  mobile: 'Mobilkostnader',
+  insurance: 'Försäkring',
+  bankAccounting: 'Bank och redovisning',
+  marketing: 'Marknadsföring',
+  competenceDevelopment: 'Kompetensutveckling',
+  otherOpex: 'Övrig drift',
+  salary: 'Löner',
+  socialFees: 'Sociala avgifter',
+  vacationPay: 'Semesterlön',
+  pension: 'Pension och övrigt'
+};
+
+function lineItemFor(state, year) {
+  return (state.lineItemBudgets || []).find(item => Number(item.year) === Number(year));
+}
+
+function lineItemTable(budget, multiplierMap = {}) {
+  const rows = [];
+  const sections = [
+    { key: 'revenue', label: 'Intäkter' },
+    { key: 'directCosts', label: 'Direkta kostnader' },
+    { key: 'opex', label: 'Driftskostnader' },
+    { key: 'personnel', label: 'Personalkostnader' }
+  ];
+  sections.forEach(section => {
+    const items = budget[section.key] || {};
+    const entries = Object.entries(items).filter(([, values]) => annual(values) !== 0);
+    if (!entries.length) return;
+    rows.push(`<tr class="row-subtotal"><td colspan="14">${escapeHtml(section.label)}</td></tr>`);
+    entries.forEach(([subCategory, values]) => {
+      const multiplier = multiplierMap[section.key] || 1;
+      const adjusted = values.map(value => number(value) * multiplier);
+      rows.push(`<tr><td style="padding-left:40px">${escapeHtml(lineItemSubCategoryLabels[subCategory] || subCategory)}</td>${cells(adjusted)}<td>${money(annual(adjusted))}</td></tr>`);
+    });
+  });
+
+  const depreciation = (budget.depreciation || Array(12).fill(0));
+  const financialNet = (budget.financialNet || Array(12).fill(0));
+  if (annual(depreciation) !== 0) rows.push(`<tr class="row-subtotal"><td colspan="14">Avskrivningar</td></tr><tr><td style="padding-left:40px">Avskrivningar</td>${cells(depreciation)}<td>${money(annual(depreciation))}</td></tr>`);
+  if (annual(financialNet) !== 0) rows.push(`<tr class="row-subtotal"><td colspan="14">Finansnetto</td></tr><tr><td style="padding-left:40px">Finansnetto</td>${cells(financialNet)}<td>${money(annual(financialNet))}</td></tr>`);
+
+  return `<div class="table-wrap"><table><thead><tr><th>Rad</th>${Array.from({ length: 12 }, (_, i) => `<th>${contextMonth(i)}</th>`).join('')}<th>Helår</th></tr></thead><tbody>${rows.join('')}</tbody></table></div>`;
+}
+
+function lineItemReadOnlyMarkup(state, year, budget) {
+  return `
+    <section class="card">
+      <div class="card-header"><div><h3>Fastställd 2026-budget</h3><p>Året är låst till den spreadsheet-rekonstruerade postförda budgeten. Ändra år till 2027 för att använda helårsdriven eller projektbaserad planering.</p></div><span class="pill">Line items</span></div>
+      ${lineItemTable(budget, { revenue: 1, directCosts: 1, opex: 1, personnel: 1 })}
+      <p class="muted section">Ovanstående poster summerar exakt till spreadsheet-versionen. Scenarier justerar intäkter, direkta kostnader och fasta kostnader med sina multiplikatorer.</p>
+    </section>
+  `;
+}
+
 function targetFor(state, year) {
   return state.targets.find(item => Number(item.year) === Number(year)) || {
     year, annualRevenue: 0, directCostRatio: 0.15, opexAnnual: 0, personnelAnnual: 0,
@@ -146,11 +217,14 @@ export function renderPlan(context) {
   const year = Number(state.selectedYear);
   const mode = state.planModeByYear[year] || 'projects';
   const target = targetFor(state, year);
+  const budget = lineItemFor(state, year);
   const projects = state.projects.filter(item => Number(item.year) === year);
   const fixedCosts = state.fixedCosts.filter(item => Number(item.year) === year);
+  const isLineItemYear = Boolean(budget);
   const html = `
     <section class="card">
-      <div class="card-header"><div><h2>Planeringsmetod ${year}</h2><p>Välj snabb helårsmodell eller detaljerad projektmodell. Båda använder samma rapport- och scenarioarkitektur.</p></div></div>
+      <div class="card-header"><div><h2>Planeringsmetod ${year}</h2><p>${isLineItemYear ? 'Året använder den fastställda postförda budgeten från kalkylarket.' : 'Välj snabb helårsmodell eller detaljerad projektmodell. Båda använder samma rapport- och scenarioarkitektur.'}</p></div></div>
+      ${isLineItemYear ? '' : `
       <div class="toolbar">
         <label class="field"><span>Metod</span><select id="plan-mode">
           <option value="target" ${mode === 'target' ? 'selected' : ''}>Helårsdriven plan</option>
@@ -161,18 +235,24 @@ export function renderPlan(context) {
           ${Array.from({ length: 12 }, (_, index) => `<option value="${index}" ${Number(state.lastClosedMonthByYear[year] ?? -1) === index ? 'selected' : ''}>${contextMonth(index)}</option>`).join('')}
         </select><small>Stängda månader hämtas från utfall. Öppna månader kommer från planen.</small></label>
       </div>
+      `}
     </section>
+    ${isLineItemYear
+      ? lineItemReadOnlyMarkup(state, year, budget)
+      : `
     <section class="section">${mode === 'target' ? targetMarkup(target) : projectFormMarkup(year)}</section>
     ${mode === 'projects' ? `
       <section class="card section"><div class="card-header"><div><h3>Projektportfölj ${year}</h3><p>${projects.length} projekt eller intäktsdrivare.</p></div></div>${projectsMarkup(projects)}</section>
       ${fixedCostFormMarkup(year)}
       <section class="card section"><div class="card-header"><div><h3>Fasta kostnader ${year}</h3></div></div>${fixedCostsMarkup(fixedCosts)}</section>
     ` : ''}
+    `}
   `;
 
   return {
     html,
     afterRender() {
+      if (!isLineItemYear) {
       document.getElementById('plan-mode')?.addEventListener('change', event => {
         context.mutate(draft => { draft.planModeByYear[year] = event.target.value; }, 'Planeringsmetod uppdaterad.');
       });
@@ -233,6 +313,11 @@ export function renderPlan(context) {
       document.querySelectorAll('[data-delete-cost]').forEach(button => button.addEventListener('click', () => {
         context.mutate(draft => { draft.fixedCosts = draft.fixedCosts.filter(item => item.id !== button.dataset.deleteCost); }, 'Kostnad borttagen.');
       }));
+    } else {
+      document.getElementById('plan-mode')?.addEventListener('change', () => {
+        toast('2026 använder den fastställda postförda budgeten.');
+      });
+    }
     }
   };
 }
