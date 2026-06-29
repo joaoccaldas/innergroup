@@ -1,0 +1,43 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://innergroup.local/schema/actuals.schema.json",
+  "title": "Inner Group canonical bookkeeping actuals row",
+  "description": "Canonical transaction-level schema used to load bookkeeping actuals into planning, forecasting, cash-flow, balance-sheet and annual-close analysis.",
+  "type": "object",
+  "required": ["record_type", "date", "period", "voucher_id", "account_code", "account_name", "debit", "credit", "currency"],
+  "properties": {
+    "record_type": { "type": "string", "enum": ["transaction", "opening_balance", "closing_balance", "trial_balance"] },
+    "date": { "type": "string", "format": "date" },
+    "period": { "type": "string", "pattern": "^20[0-9]{2}-(0[1-9]|1[0-2])$" },
+    "voucher_id": { "type": "string", "minLength": 1 },
+    "line_id": { "type": "string" },
+    "account_code": { "type": "string", "pattern": "^[0-9]{4,8}$" },
+    "account_name": { "type": "string" },
+    "description": { "type": "string" },
+    "counterparty": { "type": "string" },
+    "project_code": { "type": "string" },
+    "cost_center": { "type": "string" },
+    "debit": { "type": "number", "minimum": 0 },
+    "credit": { "type": "number", "minimum": 0 },
+    "amount_sek": { "type": "number", "description": "Optional signed amount. Debit positive and credit negative." },
+    "vat_code": { "type": "string" },
+    "vat_rate": { "type": "number", "minimum": 0, "maximum": 1 },
+    "vat_amount": { "type": "number" },
+    "currency": { "type": "string", "pattern": "^[A-Z]{3}$" },
+    "source_system": { "type": "string" },
+    "source_file": { "type": "string" },
+    "imported_at": { "type": "string", "format": "date-time" }
+  },
+  "allOf": [
+    {
+      "not": {
+        "properties": {
+          "debit": { "exclusiveMinimum": 0 },
+          "credit": { "exclusiveMinimum": 0 }
+        },
+        "required": ["debit", "credit"]
+      }
+    }
+  ],
+  "additionalProperties": true
+}
